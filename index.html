@@ -156,10 +156,21 @@ function dl(id,type){const s=db.students.find(x=>x.id===id),h=report(s);
 /* ---------- login, team, backup ---------- */
 function authView(){return `<div class="card"><h2 style="margin-top:0">${BRAND.name} trainer login</h2><div class="row"><input id="ae" type="email" placeholder="Email"><input id="ap" type="password" placeholder="Password (6+ characters)"></div>
   <div class="row"><input id="an" placeholder="Your name (new accounts only)"></div><div class="row"><button class="p" onclick="doAuth(0)">Sign in</button><button onclick="doAuth(1)">Create account</button></div>
+  <p class="mu"><a href="#" onclick="resetPw();return false" style="color:inherit">Forgot password?</a></p>
   <p class="mu">New accounts need ${BRAND.name} admin approval before they can see any student.</p></div>`}
 async function doAuth(up){const email=$('ae').value.trim(),password=$('ap').value,name=$('an').value.trim()||email;
   try{if(up){creating=true;const c=await fa.createUserWithEmailAndPassword(email,password);await c.user.updateProfile({displayName:name});await mkProfile(c.user,name);creating=false;boot(c.user)}
-  else await fa.signInWithEmailAndPassword(email,password)}catch(e){creating=false;alert(e.message);if(fa.currentUser)boot(fa.currentUser)}}
+  else await fa.signInWithEmailAndPassword(email,password)}catch(e){creating=false;alert(authMsg(e));if(fa.currentUser)boot(fa.currentUser)}}
+function authMsg(e){const m={'auth/email-already-in-use':'This email already has an account. Please click Sign in instead (use Forgot password? if you do not remember it).',
+  'auth/wrong-password':'Wrong password. Try again or use Forgot password?',
+  'auth/invalid-credential':'Wrong email or password. Try again or use Forgot password?',
+  'auth/user-not-found':'No account found for this email. Click Create account to make one.',
+  'auth/weak-password':'Password is too weak. Use at least 6 characters.',
+  'auth/invalid-email':'That email address does not look right.',
+  'auth/too-many-requests':'Too many attempts. Please wait a few minutes and try again.',
+  'auth/network-request-failed':'Network problem. Check your internet connection and try again.'};return m[e.code]||e.message}
+async function resetPw(){const email=$('ae').value.trim();if(!email)return alert('Type your email in the Email box first, then click Forgot password?');
+  try{await fa.sendPasswordResetEmail(email);alert('Password reset email sent to '+email+'. Check your inbox (and spam folder).')}catch(e){alert(authMsg(e))}}
 function pendingView(){return `<div class="card"><h2 style="margin-top:0">Waiting for approval</h2><p>Your account (${esc(me?me.email:'')}) exists, but the ${esc(BRAND.name)} admin must approve your access before you can open student records.</p><button onclick="boot(fa.currentUser)">Check again</button></div>`}
 async function setMember(id,patch){try{await fs.doc('profiles/'+id).update(patch);Object.assign(db.team.find(p=>p.id===id),patch);render()}catch(e){alert(e.message)}}
 function team(){const L=db.team.filter(p=>p.id!==me.id&&(p.role==='admin'||(p.orgs||[]).includes(ORG)||(p.want||[]).includes(ORG)));
