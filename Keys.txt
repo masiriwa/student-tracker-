@@ -1,0 +1,7 @@
+apiKey: "AIzaSyDvgQG0ECOb5dkM9ESRa6dT4l60r4OoO5w",
+  authDomain: "masih-student-tracker.firebaseapp.com",
+  projectId: "masih-student-tracker",
+  storageBucket: "masih-student-tracker.firebasestorage.app",
+  messagingSenderId: "967337865082",
+  appId: "1:967337865082:web:b03f9d028ee816241bb0c3",
+  measurementId: "G-0GBNXTMRV1"
