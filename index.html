@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Progress Tracker</title>
+<style>
+:root{--bg:#f6f7fa;--card:#fff;--tx:#14213d;--mu:#667085;--nv:#0B2545;--gd:#C9A227;--ok:#1b8a5a;--bd:#dde1e8}
+@media(prefers-color-scheme:dark){:root{--bg:#10141c;--card:#1a2030;--tx:#e8ebf2;--mu:#9aa3b5;--nv:#7aa2e3;--bd:#2c3448}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:#0B2545;color:#fff;padding:14px 18px;border-bottom:4px solid var(--gd);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;flex:1}header input{width:150px}
+nav{display:flex;gap:6px;padding:10px 18px}nav button.on{background:var(--nv);color:#fff}
+main{padding:0 18px 40px;max-width:900px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin:10px 0}
+input,select,textarea,button{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)}
+textarea{width:100%;min-height:120px}button{cursor:pointer}button.p{background:var(--gd);border-color:var(--gd);color:#111;font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.row>*{flex:1;min-width:130px}
+.bar{height:10px;background:var(--bd);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
+.mu{color:var(--mu);font-size:13px}.next{border-left:5px solid var(--gd)}
+.st{cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.av{width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--nv);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex:none}.av.big{width:96px;height:96px;font-size:36px}
+#rep{display:none}
+@media print{body>*:not(#rep){display:none!important}#rep{display:block;color:#000;background:#fff;padding:0}}
+</style></head><body>
+<header><h1>Student Progress Tracker</h1><span id="who" style="font-size:13px"></span><button id="so" onclick="fa.signOut()" style="display:none">Sign out</button></header>
+<nav id="nav" style="display:none"><button id="n0" onclick="tab(0)">Students</button><button id="n1" onclick="tab(1)">Curricula</button><button id="n2" onclick="tab(2)" style="display:none">Team</button></nav>
+<main id="m"></main><div id="rep"></div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const $=id=>document.getElementById(id),uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* ===== PASTE YOUR FIREBASE CONFIG HERE (Project settings -> Your apps -> Web app) ===== */
+const FB={apiKey:'AIzaSyDvgQG0ECOb5dkM9ESRa6dT4l60r4OoO5w',authDomain:'masih-student-tracker.firebaseapp.com',projectId:'masih-student-tracker',appId:'1:967337865082:web:b03f9d028ee816241bb0c3'};
+/* ========================================================================================= */
+const ok=!FB.apiKey.startsWith('PASTE');let fa,fs;if(ok){firebase.initializeApp(FB);fa=firebase.auth();fs=firebase.firestore()}
+const TS=()=>firebase.firestore.FieldValue.serverTimestamp();
+let me=null,creating=false,db={curricula:[],students:[],team:[]};
+const rows=async q=>(await q.get()).docs.map(d=>({id:d.id,...d.data()}));
+async function loadAll(){
+  const[c,s]=await Promise.all([rows(fs.collection('curricula')),rows(fs.collection('students'))]);
+  db.curricula=c.map(x=>({id:x.id,name:x.name,modules:x.modules||[]})).sort((a,b)=>a.name.localeCompare(b.name));
+  db.students=s.map(x=>({id:x.id,name:x.name,cid:x.cid,photo:x.photo,doneIds:x.doneIds||[]})).sort((a,b)=>a.name.localeCompare(b.name));
+  db.team=me.role==='admin'?await rows(fs.collection('profiles')):[];}
+async function mkProfile(u,name){const first=!(await fs.doc('config/admin').get()).exists,b=fs.batch();
+  if(first)b.set(fs.doc('config/admin'),{uid:u.uid});
+  b.set(fs.doc('profiles/'+u.uid),{name,email:u.email,role:first?'admin':'trainer',approved:first,createdAt:TS()});await b.commit()}
+async function boot(u){me=null;SID=null;CID=null;T=0;
+  try{if(u){let p=await fs.doc('profiles/'+u.uid).get();if(!p.exists){await mkProfile(u,u.displayName||u.email);p=await fs.doc('profiles/'+u.uid).get()}
+    me={id:u.uid,...p.data()};if(me.approved)await loadAll()}}catch(e){alert(e.message)}render()}
+async function openStu(id){SID=id;render();const s=db.students.find(x=>x.id===id);
+  if(!s.records){try{s.records=(await rows(fs.collection('records').where('studentId','==',id))).map(x=>({date:x.date,trainer:x.trainer,lid:x.lid,rating:x.rating,done:x.done,skills:x.skills,struggles:x.struggles,notes:x.notes}))}catch(e){alert(e.message);s.records=[]}}
+  if(SID===id)render()}
+let T=0,SID=null,CID=null;
+const av=(s,c='')=>s.photo?`<img class="av ${c}" src="${s.photo}">`:`<div class="av ${c}">${esc((s.name||'?')[0].toUpperCase())}</div>`;
+function shrink(f,cb){const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const z=240,k=Math.min(i.width,i.height),c=document.createElement('canvas');c.width=c.height=z;
+  c.getContext('2d').drawImage(i,(i.width-k)/2,(i.height-k)/2,k,k,0,0,z,z);cb(c.toDataURL('image/jpeg',.8))};i.onerror=()=>alert('Could not read that image');i.src=r.result};r.readAsDataURL(f)}
+function setPhoto(id,f){if(!f)return;shrink(f,async d=>{try{await fs.doc('students/'+id).update({photo:d});db.students.find(x=>x.id===id).photo=d;render()}catch(e){alert(e.message)}})}
+const cur=id=>db.curricula.find(c=>c.id===id);
+const lessons=c=>c?c.modules.flatMap(m=>m.lessons.map(l=>({...l,mod:m.title}))):[];
+function stats(s){
+  const L=lessons(cur(s.cid)),done=new Set(s.doneIds||[]);
+  const next=L.find(l=>!done.has(l.id));
+  const rs=[...(s.records||[])].sort((a,b)=>a.date<b.date?1:-1);
+  const weak=[...new Set(rs.filter(r=>r.struggles||r.rating<=2).slice(0,5).map(r=>r.struggles||('Low rating in '+(L.find(l=>l.id===r.lid)||{}).title)))];
+  return{L,done,next,rs,weak,pct:L.length?Math.round(done.size/L.length*100):0};
+}
+function tab(n){T=n;SID=null;CID=null;render()}
+function render(){
+  [0,1,2].forEach(i=>$('n'+i).className=T===i?'on':'');
+  const A=me&&me.approved;$('nav').style.display=A?'flex':'none';$('n2').style.display=A&&me.role==='admin'?'':'none';$('who').textContent=me?me.name:'';$('so').style.display=me?'':'none';
+  $('m').innerHTML=!ok?'<div class="card">Open the HTML file and paste your Firebase config values near the top of the script (see the README).</div>':!me?authView():!me.approved?pendingView():T===0?(SID?profile():students()):T===1?curricula():team();
+}
+/* ---------- students ---------- */
+function students(q=''){
+  const list=db.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
+  return `<div class="card"><div class="row"><input id="sn" placeholder="New student name"><select id="sc">${db.curricula.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><input id="sp" type="file" accept="image/*" title="Profile picture (optional)"><button class="p" onclick="addStu()">Add student</button></div>
+  ${db.curricula.length?'':'<p class="mu">Create a curriculum first (Curricula tab).</p>'}</div>
+  <input style="width:100%" placeholder="Search students" oninput="$('sl').innerHTML=sl(this.value)">
+  <div id="sl">${sl(q)}</div>`;
+}
+function sl(q){return db.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase())).map(s=>{const x=stats(s);
+  return `<div class="card st" onclick="openStu('${s.id}')"><div style="display:flex;gap:12px;align-items:center">${av(s)}<div><b>${esc(s.name)}</b><div class="mu">${esc((cur(s.cid)||{}).name||'')} · next: ${x.next?esc(x.next.title):'all done'}</div></div></div><b>${x.pct}%</b></div>`}).join('')||'<p class="mu">No students yet.</p>'}
+async function addStu(){const n=$('sn').value.trim();if(!n||!$('sc').value)return;const f=$('sp').files[0],go=async p=>{try{const d={name:n,cid:$('sc').value,photo:p||null,doneIds:[]},r=await fs.collection('students').add({...d,createdAt:TS()});
+  db.students.push({id:r.id,...d,records:[]});db.students.sort((a,b)=>a.name.localeCompare(b.name));render()}catch(e){alert(e.message)}};
+  if(f)shrink(f,go);else go()}
+function profile(){
+  const s=db.students.find(x=>x.id===SID);if(!s.records)return '<button onclick="SID=null;render()">← All students</button><p class="mu">Loading records…</p>';const x=stats(s),today=new Date().toISOString().slice(0,10);
+  const last=x.rs[0];
+  return `<button onclick="SID=null;render()">← All students</button>
+  <div class="card"><div style="display:flex;gap:14px;align-items:center">${av(s,'big')}<div><h2 style="margin:0">${esc(s.name)}</h2><div class="mu">${esc((cur(s.cid)||{}).name)} · ${x.done.size}/${x.L.length} lessons completed</div>
+  <label class="mu" style="cursor:pointer;text-decoration:underline">${s.photo?'Change':'Add'} photo<input type="file" accept="image/*" style="display:none" onchange="setPhoto('${s.id}',this.files[0])"></label></div></div>
+  <div class="bar" style="margin:8px 0"><i style="width:${x.pct}%"></i></div>
+  <div class="row"><button onclick="dl('${s.id}','doc')">Download Word</button><button onclick="dl('${s.id}','pdf')">Download PDF</button>${me.role==='admin'?`<button onclick="delStu('${s.id}')">Delete student</button>`:''}</div></div>
+  <div class="card next"><b>Train next:</b> ${x.next?esc(x.next.mod)+' → '+esc(x.next.title):'Curriculum complete'}
+  <div class="mu">${last?'Last session '+esc(last.date)+' by '+esc(last.trainer)+': '+esc((x.L.find(l=>l.id===last.lid)||{}).title)+(last.done?'':' (not yet mastered, repeat)'):'No sessions yet'}</div>
+  ${x.weak.length?`<div style="margin-top:6px"><b>Weak areas:</b> ${x.weak.map(esc).join('; ')}</div>`:''}</div>
+  <div class="card"><b>Log a session</b>
+  <div class="row"><input type="date" id="rd" value="${today}"><input id="rt" placeholder="Trainer" value="${esc(me.name)}"></div>
+  <div class="row"><select id="rl">${x.L.map(l=>`<option value="${l.id}" ${x.next&&x.next.id===l.id?'selected':''}>${esc(l.mod)} → ${esc(l.title)}${x.done.has(l.id)?' ✓':''}</option>`).join('')}</select>
+  <select id="rr"><option value="5">5 Excellent</option><option value="4">4 Good</option><option value="3" selected>3 Fair</option><option value="2">2 Weak</option><option value="1">1 Needs redo</option></select></div>
+  <label><input type="checkbox" id="rx" checked style="width:auto"> Lesson completed / mastered</label>
+  <div class="row"><input id="rk" placeholder="Skills gained"><input id="rs" placeholder="Struggles"></div>
+  <textarea id="ro" style="min-height:60px" placeholder="Notes for the next trainer"></textarea>
+  <button class="p" onclick="addRec('${s.id}')">Save session</button></div>
+  <b>History</b>${x.rs.map(r=>`<div class="card"><b>${esc(r.date)}</b> · ${esc((x.L.find(l=>l.id===r.lid)||{}).title)} · ${r.rating}/5 ${r.done?'✓':'(repeat)'}<div class="mu">Trainer: ${esc(r.trainer)}</div>
+  ${r.skills?`<div>Skills: ${esc(r.skills)}</div>`:''}${r.struggles?`<div>Struggles: ${esc(r.struggles)}</div>`:''}${r.notes?`<div>${esc(r.notes)}</div>`:''}</div>`).join('')||'<p class="mu">No sessions logged.</p>'}`;
+}
+async function addRec(id){const s=db.students.find(x=>x.id===id),r={studentId:id,date:$('rd').value,trainer:$('rt').value||me.name,lid:$('rl').value,rating:+$('rr').value,done:$('rx').checked,skills:$('rk').value,struggles:$('rs').value,notes:$('ro').value,createdBy:me.id};
+  try{const b=fs.batch();b.set(fs.collection('records').doc(),{...r,createdAt:TS()});
+    if(r.done)b.update(fs.doc('students/'+id),{doneIds:firebase.firestore.FieldValue.arrayUnion(r.lid)});await b.commit();
+    s.records.push(r);if(r.done&&!s.doneIds.includes(r.lid))s.doneIds.push(r.lid);render()}catch(e){alert(e.message)}}
+async function delStu(id){if(!confirm('Delete this student and all records?'))return;
+  try{const q=await fs.collection('records').where('studentId','==',id).get();
+    for(let i=0;i<q.docs.length;i+=400){const b=fs.batch();q.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit()}
+    await fs.doc('students/'+id).delete();db.students=db.students.filter(x=>x.id!==id);SID=null;render()}catch(e){alert(e.message)}}
+/* ---------- curricula ---------- */
+function curricula(){
+  if(CID!==null){const c=cur(CID)||{name:'',modules:[]};
+    const txt=c.modules.map(m=>'# '+m.title+'\n'+m.lessons.map(l=>l.title).join('\n')).join('\n\n');
+    return `<button onclick="CID=null;render()">← Back</button><div class="card"><input id="cname" style="width:100%" placeholder="Curriculum name (e.g. Basic Robotics, Level 1)" value="${esc(c.name)}">
+    <p class="mu">Type one lesson per line. Start a line with # for a module title. Any subject works.</p>
+    <textarea id="ctx" style="min-height:260px" placeholder="# Module 1: Basics&#10;Lesson one&#10;Lesson two&#10;&#10;# Module 2: Next topic&#10;Lesson three">${esc(txt)}</textarea>
+    <div class="row"><button class="p" onclick="saveCur()">Save curriculum</button>${cur(CID)&&me.role==='admin'?`<button onclick="delCur()">Delete</button>`:''}</div></div>`}
+  return `<div class="card"><button class="p" onclick="CID='';render()">+ New curriculum</button></div>`+
+  db.curricula.map(c=>`<div class="card st" onclick="CID='${c.id}';render()"><div><b>${esc(c.name)}</b><div class="mu">${c.modules.length} modules · ${lessons(c).length} lessons · ${db.students.filter(s=>s.cid===c.id).length} students</div></div><span>Edit</span></div>`).join('');
+}
+async function saveCur(){
+  const old=cur(CID),oldL=old?lessons(old):[],mods=[];let m=null;
+  $('ctx').value.split('\n').map(t=>t.trim()).filter(Boolean).forEach(t=>{
+    if(t[0]==='#'){m={title:t.replace(/^#+\s*/,''),lessons:[]};mods.push(m)}
+    else{if(!m){m={title:'General',lessons:[]};mods.push(m)}const o=oldL.find(l=>l.title===t);m.lessons.push({id:o?o.id:uid(),title:t})}});
+  const name=$('cname').value.trim()||'Untitled curriculum';
+  try{if(old){await fs.doc('curricula/'+old.id).update({name,modules:mods});old.name=name;old.modules=mods}
+    else{const r=await fs.collection('curricula').add({name,modules:mods,createdAt:TS()});db.curricula.push({id:r.id,name,modules:mods})}
+    CID=null;render()}catch(e){alert(e.message)}}
+async function delCur(){if(db.students.some(s=>s.cid===CID))return alert('Students are using this curriculum. Delete or move them first.');
+  if(!confirm('Delete curriculum?'))return;try{await fs.doc('curricula/'+CID).delete();db.curricula=db.curricula.filter(c=>c.id!==CID);CID=null;render()}catch(e){alert(e.message)}}
+/* ---------- reports ---------- */
+function report(s){const x=stats(s);
+  return `<div style="font-family:Calibri,Arial,sans-serif"><h1 style="color:#0B2545;border-bottom:3px solid #C9A227">Student Progress Report</h1>
+  ${s.photo?`<img src="${s.photo}" width="110" height="110" style="float:right;border-radius:8px">`:''}<p><b>Student:</b> ${esc(s.name)}<br><b>Curriculum:</b> ${esc((cur(s.cid)||{}).name)}<br><b>Date:</b> ${new Date().toISOString().slice(0,10)}<br><b>Progress:</b> ${x.done.size}/${x.L.length} lessons (${x.pct}%)</p>
+  <p><b>Next lesson:</b> ${x.next?esc(x.next.mod+' → '+x.next.title):'Curriculum complete'}</p>
+  ${x.weak.length?`<p><b>Weak areas:</b> ${x.weak.map(esc).join('; ')}</p>`:''}
+  <h2 style="color:#0B2545">Curriculum checklist</h2>${(cur(s.cid)||{modules:[]}).modules.map(m=>`<h3>${esc(m.title)}</h3><ul>${m.lessons.map(l=>`<li>${x.done.has(l.id)?'[Done]':'[ ]'} ${esc(l.title)}</li>`).join('')}</ul>`).join('')}
+  <h2 style="color:#0B2545">Session history</h2><table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse;width:100%;font-size:11pt"><tr style="background:#0B2545;color:#fff"><th>Date</th><th>Trainer</th><th>Lesson</th><th>Rating</th><th>Skills / struggles / notes</th></tr>
+  ${[...x.rs].reverse().map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.trainer)}</td><td>${esc((x.L.find(l=>l.id===r.lid)||{}).title)}${r.done?'':' (repeat)'}</td><td>${r.rating}/5</td><td>${esc([r.skills&&'Skills: '+r.skills,r.struggles&&'Struggles: '+r.struggles,r.notes].filter(Boolean).join(' | '))}</td></tr>`).join('')}</table></div>`}
+function dl(id,type){const s=db.students.find(x=>x.id===id),h=report(s);
+  if(type==='pdf'){$('rep').innerHTML=h;setTimeout(()=>window.print(),50);return}
+  const b=new Blob(['<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>'+h+'</body></html>'],{type:'application/msword'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=s.name.replace(/\W+/g,'_')+'_progress.doc';a.click()}
+/* ---------- login, team, backup ---------- */
+function authView(){return `<div class="card"><h2 style="margin-top:0">Trainer login</h2><div class="row"><input id="ae" type="email" placeholder="Email"><input id="ap" type="password" placeholder="Password (6+ characters)"></div>
+  <div class="row"><input id="an" placeholder="Your name (new accounts only)"></div><div class="row"><button class="p" onclick="doAuth(0)">Sign in</button><button onclick="doAuth(1)">Create account</button></div>
+  <p class="mu">New accounts need the admin's approval before they can see any student. The very first account created becomes the admin.</p></div>`}
+async function doAuth(up){const email=$('ae').value.trim(),password=$('ap').value,name=$('an').value.trim()||email;
+  try{if(up){creating=true;const c=await fa.createUserWithEmailAndPassword(email,password);await c.user.updateProfile({displayName:name});await mkProfile(c.user,name);creating=false;boot(c.user)}
+  else await fa.signInWithEmailAndPassword(email,password)}catch(e){creating=false;alert(e.message);if(fa.currentUser)boot(fa.currentUser)}}
+function pendingView(){return `<div class="card"><h2 style="margin-top:0">Waiting for approval</h2><p>Your account (${esc(me?me.email:'')}) exists, but the admin must approve it before you can open student records.</p><button onclick="boot(fa.currentUser)">Check again</button></div>`}
+async function setMember(id,patch){try{await fs.doc('profiles/'+id).update(patch);Object.assign(db.team.find(p=>p.id===id),patch);render()}catch(e){alert(e.message)}}
+function team(){return `<div class="card"><b>Trainers</b>`+db.team.map(p=>`<div class="row" style="align-items:center"><div><b>${esc(p.name)}</b><div class="mu">${esc(p.email)} · ${p.role}${p.approved?'':' · pending approval'}</div></div>${p.id===me.id?'':`<button class="${p.approved?'':'p'}" onclick="setMember('${p.id}',{approved:${!p.approved}})">${p.approved?'Revoke access':'Approve'}</button><button onclick="setMember('${p.id}',{role:'${p.role==='admin'?'trainer':'admin'}'})">${p.role==='admin'?'Remove admin':'Make admin'}</button>`}</div>`).join('')+`</div><div class="card"><button onclick="exp()">Download full backup (JSON)</button></div>`}
+async function exp(){try{const recs=await rows(fs.collection('records'));const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({curricula:db.curricula,students:db.students.map(({records,...x})=>x),records:recs})],{type:'application/json'}));
+  a.download='tracker_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click()}catch(e){alert(e.message)}}
+if(ok)fa.onAuthStateChanged(u=>{if(!creating)boot(u)});
+render();
+</script></body></html>
